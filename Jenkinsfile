@@ -10,7 +10,7 @@ def retryWithDelay(int maxRetries, int delay, Closure body) {
 }
 
 // DUTs on a UP are reached through the UP, over the USB network between them
-UP_DUT_IP = "169.254.254.2"
+UP_DUT_IP = "10.254.254.2"
 HARDWARE_REF = "ultimate-provisioning"
 SSH_OPTS = "-o ControlMaster=no -o ControlPath=none -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=12 -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
