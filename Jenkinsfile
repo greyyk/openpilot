@@ -9,10 +9,45 @@ def retryWithDelay(int maxRetries, int delay, Closure body) {
   throw Exception("Failed after ${maxRetries} retries")
 }
 
-def device(String ip, String step_label, String cmd) {
+// DUTs on a UP are reached through the UP, over the USB network between them
+UP_DUT_IP = "169.254.254.2"
+HARDWARE_REF = "ultimate-provisioning"
+SSH_OPTS = "-o ControlMaster=no -o ControlPath=none -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=12 -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+def upHost(String ip, String step_label, String cmd) {
   withCredentials([file(credentialsId: 'id_rsa', variable: 'key_file')]) {
+    sh label: step_label, script: """
+ssh ${SSH_OPTS} -i ${key_file} 'comma@${ip}' /usr/bin/bash <<'END'
+set -e
+source /etc/profile
+${cmd}
+END"""
+  }
+}
+
+def upSetup(String ip) {
+  withCredentials([file(credentialsId: 'id_rsa', variable: 'key_file')]) {
+    def pubkey = sh(script: "command -v ssh-keygen >/dev/null || apk add -q openssh-keygen; ssh-keygen -y -f ${key_file}", returnStdout: true).trim()
+    upHost(ip, "UP: setup DUT", """
+if [ ! -d /data/hardware ]; then
+  git clone --depth 1 --filter=blob:none --sparse https://github.com/commaai/hardware.git /data/hardware
+  git -C /data/hardware sparse-checkout set ultimate_provisioning
+fi
+git -C /data/hardware fetch --depth 1 origin ${HARDWARE_REF}
+git -C /data/hardware checkout -qf FETCH_HEAD
+
+echo '${pubkey}' > /tmp/ci_key.pub
+PYTHONPATH=/data/hardware/ultimate_provisioning python3 -m ultimate_provisioning ready --authorize-key /tmp/ci_key.pub
+""")
+  }
+}
+
+def device(String ip, String step_label, String cmd, String up_ip = null) {
+  withCredentials([file(credentialsId: 'id_rsa', variable: 'key_file')]) {
+    def jump = up_ip ? "-o ProxyCommand='ssh ${SSH_OPTS} -i ${key_file} -W %h:%p comma@${up_ip}'" : ""
+    def target = up_ip ? UP_DUT_IP : ip
     def ssh_cmd = """
-ssh -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=12 -o BatchMode=yes -o StrictHostKeyChecking=no -i ${key_file} 'comma@${ip}' exec setpriv --pdeathsig HUP /usr/bin/bash <<'END'
+ssh ${SSH_OPTS} ${jump} -i ${key_file} 'comma@${target}' exec setpriv --pdeathsig HUP /usr/bin/bash <<'END'
 
 set -e
 
@@ -78,7 +113,7 @@ END"""
   }
 }
 
-def deviceStage(String stageName, String deviceType, List extra_env, def steps) {
+def deviceStage(String stageName, String deviceType, List extra_env, def steps, boolean onUP = false) {
   stage(stageName) {
     if (currentBuild.result != null) {
         return
@@ -95,10 +130,14 @@ def deviceStage(String stageName, String deviceType, List extra_env, def steps) 
     lock(resource: "", label: deviceType, inversePrecedence: true, variable: 'device_ip', quantity: 1, resourceSelectStrategy: 'random') {
       docker.image('ghcr.io/commaai/alpine-ssh').inside('--user=root') {
         timeout(time: 35, unit: 'MINUTES') {
+          def up_ip = onUP ? device_ip : null
           retry (3) {
+            if (onUP) {
+              upSetup(up_ip)
+            }
             def date = sh(script: 'date', returnStdout: true).trim();
-            device(device_ip, "set time", "date -s '" + date + "'")
-            device(device_ip, "git checkout", extra + "\n" + readFile("openpilot/selfdrive/test/setup_device_ci.sh"))
+            device(device_ip, "set time", "date -s '" + date + "'", up_ip)
+            device(device_ip, "git checkout", extra + "\n" + readFile("openpilot/selfdrive/test/setup_device_ci.sh"), up_ip)
           }
           steps.each { item ->
             def name = item[0]
@@ -113,7 +152,7 @@ def deviceStage(String stageName, String deviceType, List extra_env, def steps) 
               return
             } else {
               timeout(time: cmdTimeout, unit: 'SECONDS') {
-                device(device_ip, name, cmd)
+                device(device_ip, name, cmd, up_ip)
               }
             }
           }
@@ -309,6 +348,17 @@ node {
       },
       'chestnut': {
         chestnutStage()
+      },
+      'UP': {
+        deviceStage("UP", "up", ["UNSAFE=1"], [
+          step("build openpilot", "cd openpilot/system/manager && ./build.py"),
+          step("check dirty", "tools/release/check-dirty.sh"),
+          step("test manager", "./openpilot/system/manager/test/test_manager.py"),
+          step("test pandad", "./openpilot/selfdrive/pandad/tests/test_pandad.py"),
+          step("test pandad loopback", "./openpilot/selfdrive/pandad/tests/test_pandad_loopback.py"),
+          step("test sensord", "./openpilot/system/sensord/tests/test_sensord.py"),
+          step("test encoder", "./openpilot/system/loggerd/tests/test_encoder.py"),
+        ], true)
       },
 
     )
