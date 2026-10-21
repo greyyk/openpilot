@@ -34,7 +34,48 @@ fi
 git -C /data/hardware fetch --depth 1 origin ${HARDWARE_REF}
 git -C /data/hardware checkout -qf FETCH_HEAD
 
+pkill -f can_replay.py || true
+PYTHONPATH=/data/hardware/ultimate_provisioning python3 -c "from ultimate_provisioning import UP; UP().reset_obdc_gpio()"
 PYTHONPATH=/data/hardware/ultimate_provisioning python3 -m ultimate_provisioning ready
+""")
+}
+
+// replay CAN from a route on the UP's CAN buses, like the jungles on the old CAN rigs
+def upStartCAN(String ip) {
+  upHost(ip, "UP: start CAN replay", """
+OP=/data/ci_openpilot
+if [ ! -d \$OP/.git ]; then
+  git init -q \$OP
+  git -C \$OP remote add origin https://github.com/commaai/openpilot.git
+fi
+export GIT_LFS_SKIP_SMUDGE=1
+git -C \$OP fetch -q --depth 1 origin ${env.GIT_COMMIT}
+git -C \$OP checkout -qf FETCH_HEAD
+
+cd \$OP
+PYTHONUNBUFFERED=1 PYTHONPATH=\$OP:/data/hardware/ultimate_provisioning setsid nohup ./openpilot/tools/replay/can_replay.py --up > /tmp/can_replay.log 2>&1 < /dev/null &
+
+# wait for the route to load
+for i in \$(seq 120); do
+  if grep -q carFingerprint /tmp/can_replay.log; then
+    break
+  fi
+  if ! pgrep -f can_replay.py > /dev/null; then
+    cat /tmp/can_replay.log
+    exit 1
+  fi
+  sleep 1
+done
+sleep 2
+cat /tmp/can_replay.log
+pgrep -f can_replay.py > /dev/null
+""")
+}
+
+def upStopCAN(String ip) {
+  upHost(ip, "UP: stop CAN replay", """
+pkill -f can_replay.py || true
+PYTHONPATH=/data/hardware/ultimate_provisioning python3 -c "from ultimate_provisioning import UP; UP().reset_obdc_gpio()"
 """)
 }
 
@@ -147,8 +188,17 @@ def deviceStage(String stageName, String deviceType, List extra_env, def steps, 
               println "Skipping ${name}: no changes in ${diffPaths}."
               return
             } else {
-              timeout(time: cmdTimeout, unit: 'SECONDS') {
-                device(device_ip, name, cmd, up_ip)
+              if (args.can) {
+                upStartCAN(up_ip)
+              }
+              try {
+                timeout(time: cmdTimeout, unit: 'SECONDS') {
+                  device(device_ip, name, cmd, up_ip)
+                }
+              } finally {
+                if (args.can) {
+                  upStopCAN(up_ip)
+                }
               }
             }
           }
@@ -354,6 +404,7 @@ node {
           step("test pandad loopback", "./openpilot/selfdrive/pandad/tests/test_pandad_loopback.py"),
           step("test sensord", "./openpilot/system/sensord/tests/test_sensord.py"),
           step("test encoder", "./openpilot/system/loggerd/tests/test_encoder.py"),
+          step("onroad tests", "./openpilot/selfdrive/test/test_onroad.py", [timeout: 60, can: true]),
         ], true)
       },
 

@@ -8,7 +8,6 @@ import threading
 from openpilot.common.realtime import config_realtime_process, Ratekeeper, DT_CTRL
 from openpilot.selfdrive.pandad import can_capnp_to_list
 from openpilot.tools.lib.logreader import LogReader
-from panda import PandaJungle
 
 # set both to cycle power or ignition
 PWR_ON = int(os.getenv("PWR_ON", "0"))
@@ -19,15 +18,45 @@ ENABLE_IGN = IGN_ON > 0 and IGN_OFF > 0
 ENABLE_PWR = PWR_ON > 0 and PWR_OFF > 0
 
 
-def send_thread(j: PandaJungle, flock):
-  if "FLASH" in os.environ:
-    with flock:
-      j.flash()
+class UPJungle:
+  """The CAN and ignition of an ultimate provisioning (UP) board, with the jungle API used here."""
+  def __init__(self):
+    from ultimate_provisioning import UP, CAN, available_interfaces, configure
+    interfaces = available_interfaces()
+    configure(interfaces, bitrate=500_000)
+    self.up = UP()
+    self.can = CAN(interfaces)
 
-  j.reset()
-  for i in [0, 1, 2, 3, 0xFFFF]:
-    j.can_clear(i)
-    j.set_can_speed_kbps(i, 500)
+  def set_ignition(self, on):
+    self.up.orientation_sbu1(ignition_on=on)
+
+  def set_panda_power(self, on):
+    self.up.set_power(obd_c=on)
+
+  def set_can_loopback(self, on):
+    pass
+
+  def can_send_many(self, msgs):
+    try:
+      self.can.can_send_many(msgs)
+    except OSError:
+      # CAN TX buffer is full
+      pass
+
+  def can_recv(self):
+    return self.can.can_recv()
+
+
+def send_thread(j, flock):
+  if not isinstance(j, UPJungle):
+    if "FLASH" in os.environ:
+      with flock:
+        j.flash()
+
+    j.reset()
+    for i in [0, 1, 2, 3, 0xFFFF]:
+      j.can_clear(i)
+      j.set_can_speed_kbps(i, 500)
   j.set_ignition(True)
   j.set_panda_power(True)
   j.set_can_loopback(False)
@@ -56,6 +85,7 @@ def send_thread(j: PandaJungle, flock):
 
 
 def connect():
+  from panda import PandaJungle
   config_realtime_process(3, 55)
 
   serials = {}
@@ -92,6 +122,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Replay CAN messages from a route to all connected pandas and jungles in a loop.",
                                    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument("route_or_segment_name", nargs='?', help="The route or segment name to replay. If not specified, a default public route will be used.")
+  parser.add_argument("--up", action="store_true", help="Replay on the CAN buses of the ultimate provisioning board this is running on.")
   args = parser.parse_args()
 
   if args.route_or_segment_name is None:
@@ -104,4 +135,8 @@ if __name__ == "__main__":
   if ENABLE_IGN:
     print(f"Cycling ignition: on for {IGN_ON}s, off for {IGN_OFF}s")
 
-  connect()
+  if args.up:
+    config_realtime_process(3, 55)
+    send_thread(UPJungle(), None)
+  else:
+    connect()
