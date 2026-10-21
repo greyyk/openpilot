@@ -125,8 +125,8 @@ if [ -f /AGNOS ]; then
     sleep 3
   fi
 
-  # restart aux USB
-  if [ -e /sys/bus/usb/drivers/hub/3-0:1.0 ]; then
+  # restart aux USB, unless that's our connection to the UP
+  if [ -z "${up_ip ?: ''}" ] && [ -e /sys/bus/usb/drivers/hub/3-0:1.0 ]; then
     echo "restarting aux usb"
     echo "3-0:1.0" | sudo tee /sys/bus/usb/drivers/hub/unbind
     sleep 0.5
