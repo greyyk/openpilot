@@ -40,7 +40,7 @@ PYTHONPATH=/data/hardware/ultimate_provisioning python3 -m ultimate_provisioning
 """)
 }
 
-// replay CAN from a route on the UP's CAN buses, like the jungles on the old CAN rigs
+// replay CAN from a route on the UP's CAN buses
 def upStartCAN(String ip) {
   upHost(ip, "UP: start CAN replay", """
 OP=/data/ci_openpilot
@@ -80,10 +80,11 @@ PYTHONPATH=/data/hardware/ultimate_provisioning python3 -c "from ultimate_provis
 """)
 }
 
-def device(String ip, String step_label, String cmd, String up_ip = null) {
+// run on the DUT, through its UP. chestnut devices aren't on UPs and are reached directly
+def device(String ip, String step_label, String cmd, boolean onUP = true) {
   withCredentials([file(credentialsId: 'id_rsa', variable: 'key_file')]) {
-    def jump = up_ip ? "-o ProxyCommand='ssh ${SSH_OPTS} -i ${key_file} -W %h:%p comma@${up_ip}'" : ""
-    def target = up_ip ? UP_DUT_IP : ip
+    def jump = onUP ? "-o ProxyCommand='ssh ${SSH_OPTS} -i ${key_file} -W %h:%p comma@${ip}'" : ""
+    def target = onUP ? UP_DUT_IP : ip
     def ssh_cmd = """
 ssh ${SSH_OPTS} ${jump} -i ${key_file} 'comma@${target}' exec setpriv --pdeathsig HUP /usr/bin/bash <<'END'
 
@@ -127,7 +128,7 @@ if [ -f /AGNOS ]; then
   fi
 
   # restart aux USB, unless that's our connection to the UP
-  if [ -z "${up_ip ?: ''}" ] && [ -e /sys/bus/usb/drivers/hub/3-0:1.0 ]; then
+  if [ "${onUP}" = "false" ] && [ -e /sys/bus/usb/drivers/hub/3-0:1.0 ]; then
     echo "restarting aux usb"
     echo "3-0:1.0" | sudo tee /sys/bus/usb/drivers/hub/unbind
     sleep 0.5
@@ -151,7 +152,8 @@ END"""
   }
 }
 
-def deviceStage(String stageName, String deviceType, List extra_env, def steps, boolean onUP = false) {
+def deviceStage(String stageName, String deviceType, List extra_env, def steps) {
+  def onUP = deviceType == "up"
   stage(stageName) {
     if (currentBuild.result != null) {
         return
@@ -168,14 +170,13 @@ def deviceStage(String stageName, String deviceType, List extra_env, def steps, 
     lock(resource: "", label: deviceType, inversePrecedence: true, variable: 'device_ip', quantity: 1, resourceSelectStrategy: 'random') {
       docker.image('ghcr.io/commaai/alpine-ssh').inside('--user=root') {
         timeout(time: 35, unit: 'MINUTES') {
-          def up_ip = onUP ? device_ip : null
           retry (3) {
             if (onUP) {
-              upSetup(up_ip)
+              upSetup(device_ip)
             }
             def date = sh(script: 'date', returnStdout: true).trim();
-            device(device_ip, "set time", "date -s '" + date + "'", up_ip)
-            device(device_ip, "git checkout", extra + "\n" + readFile("openpilot/selfdrive/test/setup_device_ci.sh"), up_ip)
+            device(device_ip, "set time", "date -s '" + date + "'", onUP)
+            device(device_ip, "git checkout", extra + "\n" + readFile("openpilot/selfdrive/test/setup_device_ci.sh"), onUP)
           }
           steps.each { item ->
             def name = item[0]
@@ -190,15 +191,15 @@ def deviceStage(String stageName, String deviceType, List extra_env, def steps, 
               return
             } else {
               if (args.can) {
-                upStartCAN(up_ip)
+                upStartCAN(device_ip)
               }
               try {
                 timeout(time: cmdTimeout, unit: 'SECONDS') {
-                  device(device_ip, name, cmd, up_ip)
+                  device(device_ip, name, cmd, onUP)
                 }
               } finally {
                 if (args.can) {
-                  upStopCAN(up_ip)
+                  upStopCAN(device_ip)
                 }
               }
             }
@@ -307,7 +308,7 @@ node {
 
   try {
     if (env.BRANCH_NAME == 'devel-staging') {
-      deviceStage("build release-tizi-staging", "tizi-needs-can", [], [
+      deviceStage("build release-tizi-staging", "up", [], [
         step("build release-tizi-staging", "RELEASE_BRANCH=release-tizi-staging,release-mici-staging $SOURCE_DIR/tools/release/build_release.sh"),
       ])
     }
@@ -315,12 +316,12 @@ node {
     if (env.BRANCH_NAME == '__nightly') {
       parallel (
         'nightly': {
-          deviceStage("build nightly", "tizi-needs-can", [], [
+          deviceStage("build nightly", "up", [], [
             step("build nightly", "RELEASE_BRANCH=nightly $SOURCE_DIR/tools/release/build_release.sh"),
           ])
         },
         'nightly-dev': {
-          deviceStage("build nightly-dev", "tizi-needs-can", [], [
+          deviceStage("build nightly-dev", "up", [], [
             step("build nightly-dev", "PANDA_DEBUG_BUILD=1 RELEASE_BRANCH=nightly-dev $SOURCE_DIR/tools/release/build_release.sh"),
           ])
         },
@@ -349,7 +350,7 @@ node {
           step("build openpilot", "cd openpilot/system/manager && ./build.py"),
           step("check dirty", "tools/release/check-dirty.sh"),
           step("onroad tests", "./openpilot/selfdrive/test/test_onroad.py TestOnroad", [timeout: 60, can: true]),
-        ], true)
+        ])
       },
       'HW + Unit Tests': {
         deviceStage("hardware", "up", ["UNSAFE=1"], [
@@ -357,33 +358,33 @@ node {
           step("test power draw", "./openpilot/selfdrive/test/test_power_draw.py"),
           step("test encoder", "./openpilot/system/loggerd/tests/test_encoder.py", [diffPaths: ["openpilot/system/loggerd/"]]),
           step("test manager", "./openpilot/system/manager/test/test_manager.py"),
-        ], true)
+        ])
       },
       'camerad': {
         deviceStage("camerad", "up", ["UNSAFE=1"], [
           step("build", "cd openpilot/system/manager && ./build.py"),
           step("test pandad", "./openpilot/selfdrive/pandad/tests/test_pandad.py"),
           step("test camerad", "./openpilot/system/camerad/test/test_camerad.py", [timeout: 90]),
-        ], true)
+        ])
       },
       'sensord': {
         deviceStage("sensord", "up", ["UNSAFE=1"], [
           step("build", "cd openpilot/system/manager && ./build.py"),
           step("test sensord", "./openpilot/system/sensord/tests/test_sensord.py"),
-        ], true)
+        ])
       },
       'replay': {
         deviceStage("model-replay", "up", ["UNSAFE=1"], [
           step("build", "cd openpilot/system/manager && ./build.py", [diffPaths: ["openpilot/selfdrive/modeld/", "tinygrad_repo", "openpilot/selfdrive/test/process_replay/model_replay.py"]]),
           step("model replay", "openpilot/selfdrive/test/process_replay/model_replay.py", [diffPaths: ["openpilot/selfdrive/modeld/", "tinygrad_repo", "openpilot/selfdrive/test/process_replay/model_replay.py"]]),
-        ], true)
+        ])
       },
       'pandad': {
         deviceStage("pandad", "up", ["UNSAFE=1"], [
           step("build openpilot", "cd openpilot/system/manager && ./build.py"),
           step("test pandad loopback", "./openpilot/selfdrive/pandad/tests/test_pandad_loopback.py"),
           step("test pandad spi", "./openpilot/selfdrive/pandad/tests/test_pandad_spi.py"),
-        ], true)
+        ])
       },
       'chestnut': {
         chestnutStage()

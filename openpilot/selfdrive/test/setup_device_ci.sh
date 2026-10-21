@@ -34,6 +34,10 @@ tee "$CONTINUE_PATH" << EOF
 
 sudo abctl --set_success
 
+# the UP reaches the DUT over the aux USB gadget, which needs adb on
+mkdir -p /data/params/d
+echo -n 1 > /data/params/d/AdbEnabled
+
 # patch sshd config
 sudo mount -o rw,remount /
 sudo sed -i "s,/data/params/d/GithubSshKeys,/usr/comma/setup_keys," /etc/ssh/sshd_config
