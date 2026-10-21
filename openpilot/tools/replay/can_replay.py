@@ -18,46 +18,15 @@ ENABLE_IGN = IGN_ON > 0 and IGN_OFF > 0
 ENABLE_PWR = PWR_ON > 0 and PWR_OFF > 0
 
 
-class UPJungle:
-  """The CAN and ignition of an ultimate provisioning (UP) board, with the jungle API used here."""
-  def __init__(self):
-    from ultimate_provisioning import UP, CAN, available_interfaces, configure
-    interfaces = available_interfaces()
-    configure(interfaces, bitrate=500_000)
-    self.up = UP()
-    self.can = CAN(interfaces)
-
-  def set_ignition(self, on):
-    self.up.orientation_sbu2(ignition_on=on)
-
-  def set_panda_power(self, on):
-    self.up.set_power(obd_c=on)
-
-  def set_can_loopback(self, on):
-    pass
-
-  def can_send_many(self, msgs):
-    for msg in msgs:
-      try:
-        self.can.can_send(*msg)
-      except OSError:
-        # this bus' TX buffer is full, e.g. nothing ACKs while the panda has it on the OBD port. keep sending the others
-        pass
-
-  def can_recv(self):
-    return self.can.can_recv()
-
-
 def send_thread(j, flock):
-  if not isinstance(j, UPJungle):
-    if "FLASH" in os.environ:
-      with flock:
-        j.flash()
+  if "FLASH" in os.environ:
+    with flock:
+      j.flash()
 
-    j.reset()
-    for i in [0, 1, 2, 3, 0xFFFF]:
-      j.can_clear(i)
-      j.set_can_speed_kbps(i, 500)
+  j.reset()
+  for i in [0, 1, 2, 3, 0xFFFF]:
+    j.can_clear(i)
+    j.set_can_speed_kbps(i, 500)
   j.set_ignition(True)
   j.set_panda_power(True)
   j.set_can_loopback(False)
@@ -137,7 +106,8 @@ if __name__ == "__main__":
     print(f"Cycling ignition: on for {IGN_ON}s, off for {IGN_OFF}s")
 
   if args.up:
+    from ultimate_provisioning import Jungle
     config_realtime_process(3, 55)
-    send_thread(UPJungle(), None)
+    send_thread(Jungle(), None)
   else:
     connect()

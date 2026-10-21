@@ -34,8 +34,6 @@ fi
 git -C /data/hardware fetch --depth 1 origin ${HARDWARE_REF}
 git -C /data/hardware checkout -qf FETCH_HEAD
 
-pkill -f can_replay.py || true
-PYTHONPATH=/data/hardware/ultimate_provisioning python3 -c "from ultimate_provisioning import UP; UP().reset_obdc_gpio()"
 PYTHONPATH=/data/hardware/ultimate_provisioning python3 -m ultimate_provisioning ready
 """)
 }
@@ -74,10 +72,7 @@ pgrep -f can_replay.py > /dev/null
 }
 
 def upStopCAN(String ip) {
-  upHost(ip, "UP: stop CAN replay", """
-pkill -f can_replay.py || true
-PYTHONPATH=/data/hardware/ultimate_provisioning python3 -c "from ultimate_provisioning import UP; UP().reset_obdc_gpio()"
-""")
+  upHost(ip, "UP: stop CAN replay", "PYTHONPATH=/data/hardware/ultimate_provisioning python3 -m ultimate_provisioning release")
 }
 
 // run on the DUT, through its UP. chestnut devices aren't on UPs and are reached directly
