@@ -106,6 +106,24 @@ LOGS_SIZE = {  # MB per segment
 LOGS_SIZE.update(dict.fromkeys(['ecamera.hevc', 'fcamera.hevc', 'dcamera.hevc'], 76.5))
 
 
+def group_by_service(lr):
+  msgs = defaultdict(list)
+  for m in lr:
+    msgs[m.which()].append(m)
+  return msgs
+
+
+class TimeSeries(dict):
+  # converts a service on first use, converting the whole log takes ~10s on device
+  def __init__(self, msgs):
+    super().__init__()
+    self.msgs = msgs
+
+  def __missing__(self, service):
+    self[service] = msgs_to_time_series(self.msgs[service])[service]
+    return self[service]
+
+
 def cputime_total(ct):
   return ct.cpuUser + ct.cpuSystem + ct.cpuChildrenUser + ct.cpuChildrenSystem
 
@@ -123,7 +141,8 @@ class TestOnroad(OpenpilotTestCase):
       segs = filter(lambda x: os.path.exists(os.path.join(x, "rlog.zst")), Path(Paths.log_root()).iterdir())
       segs = sorted(segs, key=lambda x: x.stat().st_mtime)
       cls.lr = list(LogReader(os.path.join(segs[-1], "rlog.zst")))
-      cls.ts = msgs_to_time_series(cls.lr)
+      cls.msgs = group_by_service(cls.lr)
+      cls.ts = TimeSeries(cls.msgs)
       return
 
     # setup env
@@ -163,19 +182,14 @@ class TestOnroad(OpenpilotTestCase):
           proc.kill()
 
     cls.lr = list(LogReader(os.path.join(str(segs[0]), "rlog.zst")))
-    st = time.monotonic()
-    cls.ts = msgs_to_time_series(cls.lr)
-    print("msgs to time series", time.monotonic() - st)
+    cls.msgs = group_by_service(cls.lr)
+    cls.ts = TimeSeries(cls.msgs)
     log_path = segs[0]
 
     cls.log_sizes = {}
     for f in log_path.iterdir():
       assert f.is_file()
       cls.log_sizes[f] = f.stat().st_size / 1e6
-
-    cls.msgs = defaultdict(list)
-    for m in cls.lr:
-      cls.msgs[m.which()].append(m)
 
   def test_service_frequencies(self, subtests):
     for s, msgs in self.msgs.items():
