@@ -7,11 +7,11 @@ from collections import deque
 
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.filter_simple import FirstOrderFilter
+from openpilot.common.hardware import HARDWARE
 
 
 def read_power():
-  with open("/sys/bus/i2c/devices/0-0040/hwmon/hwmon1/power1_input") as f:
-    return int(f.read()) / 1e6
+  return HARDWARE.get_som_power_draw()
 
 def sample_power(seconds=5) -> list[float]:
   rate = 123
