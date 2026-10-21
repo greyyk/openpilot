@@ -382,7 +382,8 @@ def hardware_thread(end_event, hw_queue) -> None:
     if not PC:
       # we enforce this for our software, but you are welcome
       # to make a different decision in your software
-      startup_conditions["registered_device"] = PC or (params.get("DongleId") != UNREGISTERED_DONGLE_ID)
+      # the HITL test rigs' devices aren't registered
+      startup_conditions["registered_device"] = PC or (params.get("DongleId") != UNREGISTERED_DONGLE_ID) or "TESTING_CLOSET" in os.environ
 
     # Handle offroad/onroad transition
     should_start = all(onroad_conditions.values())
