@@ -51,9 +51,10 @@ fi
 export GIT_LFS_SKIP_SMUDGE=1
 git -C \$OP fetch -q --depth 1 origin ${env.GIT_COMMIT}
 git -C \$OP checkout -qf FETCH_HEAD
+git -C \$OP submodule update -q --init --depth 1 opendbc_repo
 
 cd \$OP
-PYTHONUNBUFFERED=1 PYTHONPATH=\$OP:/data/hardware/ultimate_provisioning setsid nohup ./openpilot/tools/replay/can_replay.py --up > /tmp/can_replay.log 2>&1 < /dev/null &
+PYTHONUNBUFFERED=1 PYTHONPATH=\$OP:\$OP/opendbc_repo:/data/hardware/ultimate_provisioning setsid nohup ./openpilot/tools/replay/can_replay.py --up > /tmp/can_replay.log 2>&1 < /dev/null &
 
 # wait for the route to load
 for i in \$(seq 120); do
@@ -344,68 +345,48 @@ node {
     if (!env.BRANCH_NAME.matches(excludeRegex)) {
     parallel (
       'onroad tests': {
-        deviceStage("onroad", "tizi-needs-can", ["UNSAFE=1"], [
+        deviceStage("onroad", "up", ["UNSAFE=1"], [
           step("build openpilot", "cd openpilot/system/manager && ./build.py"),
           step("check dirty", "tools/release/check-dirty.sh"),
-          step("onroad tests", "./openpilot/selfdrive/test/test_onroad.py", [timeout: 60]),
-        ])
+          step("onroad tests", "./openpilot/selfdrive/test/test_onroad.py TestOnroad", [timeout: 60, can: true]),
+        ], true)
       },
       'HW + Unit Tests': {
-        deviceStage("tizi-hardware", "tizi-common", ["UNSAFE=1"], [
+        deviceStage("hardware", "up", ["UNSAFE=1"], [
           step("build", "cd openpilot/system/manager && ./build.py"),
           step("test power draw", "./openpilot/selfdrive/test/test_power_draw.py"),
           step("test encoder", "./openpilot/system/loggerd/tests/test_encoder.py", [diffPaths: ["openpilot/system/loggerd/"]]),
           step("test manager", "./openpilot/system/manager/test/test_manager.py"),
-        ])
+        ], true)
       },
-      'camerad OX03C10': {
-        deviceStage("OX03C10", "tizi-ox03c10", ["UNSAFE=1"], [
+      'camerad': {
+        deviceStage("camerad", "up", ["UNSAFE=1"], [
           step("build", "cd openpilot/system/manager && ./build.py"),
           step("test pandad", "./openpilot/selfdrive/pandad/tests/test_pandad.py"),
           step("test camerad", "./openpilot/system/camerad/test/test_camerad.py", [timeout: 90]),
-        ])
-      },
-      'camerad OS04C10': {
-        deviceStage("OS04C10", "tici-os04c10", ["UNSAFE=1"], [
-          step("build", "cd openpilot/system/manager && ./build.py"),
-          step("test pandad", "./openpilot/selfdrive/pandad/tests/test_pandad.py"),
-          step("test camerad", "./openpilot/system/camerad/test/test_camerad.py", [timeout: 90]),
-        ])
+        ], true)
       },
       'sensord': {
-        deviceStage("LSM + MMC", "tizi-lsmc", ["UNSAFE=1"], [
+        deviceStage("sensord", "up", ["UNSAFE=1"], [
           step("build", "cd openpilot/system/manager && ./build.py"),
           step("test sensord", "./openpilot/system/sensord/tests/test_sensord.py"),
-        ])
+        ], true)
       },
       'replay': {
-        deviceStage("model-replay", "tizi-replay", ["UNSAFE=1"], [
+        deviceStage("model-replay", "up", ["UNSAFE=1"], [
           step("build", "cd openpilot/system/manager && ./build.py", [diffPaths: ["openpilot/selfdrive/modeld/", "tinygrad_repo", "openpilot/selfdrive/test/process_replay/model_replay.py"]]),
           step("model replay", "openpilot/selfdrive/test/process_replay/model_replay.py", [diffPaths: ["openpilot/selfdrive/modeld/", "tinygrad_repo", "openpilot/selfdrive/test/process_replay/model_replay.py"]]),
-        ])
+        ], true)
       },
-      'tizi': {
-        deviceStage("tizi", "tizi", ["UNSAFE=1"], [
+      'pandad': {
+        deviceStage("pandad", "up", ["UNSAFE=1"], [
           step("build openpilot", "cd openpilot/system/manager && ./build.py"),
           step("test pandad loopback", "./openpilot/selfdrive/pandad/tests/test_pandad_loopback.py"),
           step("test pandad spi", "./openpilot/selfdrive/pandad/tests/test_pandad_spi.py"),
-          step("test amp", "./openpilot/common/hardware/comma/tests/test_amplifier.py"),
-        ])
+        ], true)
       },
       'chestnut': {
         chestnutStage()
-      },
-      'UP': {
-        deviceStage("UP", "up", ["UNSAFE=1"], [
-          step("build openpilot", "cd openpilot/system/manager && ./build.py"),
-          step("check dirty", "tools/release/check-dirty.sh"),
-          step("test manager", "./openpilot/system/manager/test/test_manager.py"),
-          step("test pandad", "./openpilot/selfdrive/pandad/tests/test_pandad.py"),
-          step("test pandad loopback", "./openpilot/selfdrive/pandad/tests/test_pandad_loopback.py"),
-          step("test sensord", "./openpilot/system/sensord/tests/test_sensord.py"),
-          step("test encoder", "./openpilot/system/loggerd/tests/test_encoder.py"),
-          step("onroad tests", "./openpilot/selfdrive/test/test_onroad.py", [timeout: 60, can: true]),
-        ], true)
       },
 
     )

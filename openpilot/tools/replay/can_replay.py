@@ -28,7 +28,7 @@ class UPJungle:
     self.can = CAN(interfaces)
 
   def set_ignition(self, on):
-    self.up.orientation_sbu1(ignition_on=on)
+    self.up.orientation_sbu2(ignition_on=on)
 
   def set_panda_power(self, on):
     self.up.set_power(obd_c=on)
