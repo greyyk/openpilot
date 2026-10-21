@@ -26,9 +26,7 @@ END"""
 }
 
 def upSetup(String ip) {
-  withCredentials([file(credentialsId: 'id_rsa', variable: 'key_file')]) {
-    def pubkey = sh(script: "command -v ssh-keygen >/dev/null || apk add -q openssh-keygen; ssh-keygen -y -f ${key_file}", returnStdout: true).trim()
-    upHost(ip, "UP: setup DUT", """
+  upHost(ip, "UP: setup DUT", """
 if [ ! -d /data/hardware ]; then
   git clone --depth 1 --filter=blob:none --sparse https://github.com/commaai/hardware.git /data/hardware
   git -C /data/hardware sparse-checkout set ultimate_provisioning
@@ -36,10 +34,8 @@ fi
 git -C /data/hardware fetch --depth 1 origin ${HARDWARE_REF}
 git -C /data/hardware checkout -qf FETCH_HEAD
 
-echo '${pubkey}' > /tmp/ci_key.pub
-PYTHONPATH=/data/hardware/ultimate_provisioning python3 -m ultimate_provisioning ready --authorize-key /tmp/ci_key.pub
+PYTHONPATH=/data/hardware/ultimate_provisioning python3 -m ultimate_provisioning ready
 """)
-  }
 }
 
 def device(String ip, String step_label, String cmd, String up_ip = null) {
