@@ -81,14 +81,14 @@ class TestBoarddSpi(OpenpilotTestCase):
             assert len(m.pandaStates) == 1
             ps = m.pandaStates[0]
             assert ps.uptime < 1000
-            assert ps.pandaType == "tres"
+            assert ps.pandaType == "cuatro"
             assert ps.ignitionLine
             assert not ps.ignitionCan
-            assert 4000 < ps.voltage < 14000
+            assert 4000 < ps.voltage < 16000
           elif service == "peripheralState":
             ps = m.peripheralState
-            assert ps.pandaType == "tres"
-            assert 4000 < ps.voltage < 14000
+            assert ps.pandaType == "cuatro"
+            assert 4000 < ps.voltage < 16000
             assert ps.fanSpeedRpm < 10000
 
       time.sleep(0.5)
