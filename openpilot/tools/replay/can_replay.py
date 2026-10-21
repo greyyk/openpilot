@@ -37,11 +37,12 @@ class UPJungle:
     pass
 
   def can_send_many(self, msgs):
-    try:
-      self.can.can_send_many(msgs)
-    except OSError:
-      # CAN TX buffer is full
-      pass
+    for msg in msgs:
+      try:
+        self.can.can_send(*msg)
+      except OSError:
+        # this bus' TX buffer is full, e.g. nothing ACKs while the panda has it on the OBD port. keep sending the others
+        pass
 
   def can_recv(self):
     return self.can.can_recv()
