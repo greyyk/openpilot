@@ -3,6 +3,7 @@
 import math
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -73,6 +74,8 @@ PROCS = {
   "openpilot.system.loggerd.deleter": 1.0,
   "./pandad": 40.0,
   "openpilot.system.qcomgpsd.qcomgpsd": 1.0,
+  "openpilot.system.ubloxd.ubloxd": 2.0,
+  "openpilot.system.ubloxd.pigeond": 5.0,
 }
 
 TIMINGS = {
@@ -246,11 +249,15 @@ class TestOnroad(OpenpilotTestCase):
           n = list(x.cmdline)[0]
           plogs_by_proc[n].append(x)
 
+    # only the procs that run on this device, e.g. the GPS daemon and uploader vary
+    all_procs = {p.name for p in self.msgs['managerState'][0].managerState.processes if p.shouldBeRunning}
+    procs = {k: v for k, v in PROCS.items() if re.split(r'[./]', k)[-1] in all_procs}
+
     cpu_ok = True
     dt = (self.msgs['procLog'][-1].logMonoTime - self.msgs['procLog'][0].logMonoTime) / 1e9
     header = ['process', 'usage', 'expected', 'max allowed', 'test result']
     rows = []
-    for proc_name, expected in PROCS.items():
+    for proc_name, expected in procs.items():
 
       error = ""
       usage = 0.
@@ -272,13 +279,12 @@ class TestOnroad(OpenpilotTestCase):
     print(tabulate(rows, header, tablefmt="simple_grid", stralign="center", numalign="center", floatfmt=".2f"))
 
     # Ensure there's no missing procs
-    all_procs = {p.name for p in self.msgs['managerState'][0].managerState.processes if p.shouldBeRunning}
     for p in all_procs:
       with subtests.test(proc=p):
         assert any(p in pp for pp in PROCS.keys()), f"Expected CPU usage missing for {p}"
 
     # total CPU check
-    procs_tot = sum([(max(x) if isinstance(x, tuple) else x) for x in PROCS.values()])
+    procs_tot = sum([(max(x) if isinstance(x, tuple) else x) for x in procs.values()])
     with subtests.test(name="total CPU"):
       assert procs_tot < MAX_TOTAL_CPU, "Total CPU budget exceeded"
     print("------------------------------------------------")
