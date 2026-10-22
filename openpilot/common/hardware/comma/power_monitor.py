@@ -11,7 +11,10 @@ from openpilot.common.hardware import HARDWARE
 
 
 def read_power():
-  return HARDWARE.get_som_power_draw()
+  # the comma four's SOM runs from its battery, the comma 3X has a power monitor on its input
+  if HARDWARE.get_device_type() == "mici":
+    return HARDWARE.get_som_power_draw()
+  return HARDWARE.get_current_power_draw()
 
 def sample_power(seconds=5) -> list[float]:
   rate = 123

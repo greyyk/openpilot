@@ -148,7 +148,7 @@ END"""
 }
 
 def deviceStage(String stageName, String deviceType, List extra_env, def steps) {
-  def onUP = deviceType == "up"
+  def onUP = deviceType.startsWith("up")
   stage(stageName) {
     if (currentBuild.result != null) {
         return
@@ -379,6 +379,41 @@ node {
           step("build openpilot", "cd openpilot/system/manager && ./build.py"),
           step("test pandad loopback", "./openpilot/selfdrive/pandad/tests/test_pandad_loopback.py"),
           step("test pandad spi", "./openpilot/selfdrive/pandad/tests/test_pandad_spi.py"),
+        ])
+      },
+      'tizi HW + Unit Tests': {
+        deviceStage("tizi-hardware", "up-tizi", ["UNSAFE=1"], [
+          step("build", "cd openpilot/system/manager && ./build.py"),
+          step("test power draw", "./openpilot/selfdrive/test/test_power_draw.py"),
+          step("test encoder", "./openpilot/system/loggerd/tests/test_encoder.py", [diffPaths: ["openpilot/system/loggerd/"]]),
+          step("test manager", "./openpilot/system/manager/test/test_manager.py"),
+        ])
+      },
+      'camerad OX03C10': {
+        deviceStage("OX03C10", "up-tizi", ["UNSAFE=1"], [
+          step("build", "cd openpilot/system/manager && ./build.py"),
+          step("test pandad", "./openpilot/selfdrive/pandad/tests/test_pandad.py"),
+          step("test camerad", "./openpilot/system/camerad/test/test_camerad.py", [timeout: 90]),
+        ])
+      },
+      'tizi sensord': {
+        deviceStage("tizi LSM", "up-tizi", ["UNSAFE=1"], [
+          step("build", "cd openpilot/system/manager && ./build.py"),
+          step("test sensord", "./openpilot/system/sensord/tests/test_sensord.py"),
+        ])
+      },
+      'tizi replay': {
+        deviceStage("tizi model-replay", "up-tizi", ["UNSAFE=1"], [
+          step("build", "cd openpilot/system/manager && ./build.py", [diffPaths: ["openpilot/selfdrive/modeld/", "tinygrad_repo", "openpilot/selfdrive/test/process_replay/model_replay.py"]]),
+          step("model replay", "openpilot/selfdrive/test/process_replay/model_replay.py", [diffPaths: ["openpilot/selfdrive/modeld/", "tinygrad_repo", "openpilot/selfdrive/test/process_replay/model_replay.py"]]),
+        ])
+      },
+      'tizi': {
+        deviceStage("tizi", "up-tizi", ["UNSAFE=1"], [
+          step("build openpilot", "cd openpilot/system/manager && ./build.py"),
+          step("test pandad loopback", "./openpilot/selfdrive/pandad/tests/test_pandad_loopback.py"),
+          step("test pandad spi", "./openpilot/selfdrive/pandad/tests/test_pandad_spi.py"),
+          step("test amp", "./openpilot/common/hardware/comma/tests/test_amplifier.py"),
         ])
       },
       'chestnut': {

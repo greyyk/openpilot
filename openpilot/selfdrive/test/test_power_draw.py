@@ -13,6 +13,7 @@ from openpilot.cereal.services import SERVICE_LIST
 from opendbc.car.car_helpers import get_demo_car_params
 from openpilot.common.mock import mock_messages
 from openpilot.common.params import Params
+from openpilot.common.hardware import HARDWARE
 from openpilot.common.hardware.comma.power_monitor import get_power
 from openpilot.system.manager.process_config import managed_processes
 from openpilot.system.manager.manager import manager_cleanup
@@ -33,12 +34,19 @@ class Proc:
     return '+'.join(self.procs)
 
 
-PROCS = [
+MICI_PROCS = [
   Proc(['camerad'], 0.62, atol=0.2, msgs=['narrowRoadCameraState', 'wideRoadCameraState', 'cabinCameraState']),
   Proc(['modeld'], 0.87, atol=0.2, msgs=['modelV2']),
   Proc(['dmonitoringmodeld'], 0.48, atol=0.2, msgs=['driverStateV2']),
   Proc(['encoderd'], 0.1, msgs=[]),
 ]
+TIZI_PROCS = [
+  Proc(['camerad'], 1.65, atol=0.4, msgs=['narrowRoadCameraState', 'wideRoadCameraState', 'cabinCameraState']),
+  Proc(['modeld'], 1.5, atol=0.2, msgs=['modelV2']),
+  Proc(['dmonitoringmodeld'], 0.65, atol=0.35, msgs=['driverStateV2']),
+  Proc(['encoderd'], 0.23, msgs=[]),
+]
+PROCS = TIZI_PROCS if HARDWARE.get_device_type() == "tizi" else MICI_PROCS
 
 
 class TestPowerDraw(OpenpilotTestCase):
