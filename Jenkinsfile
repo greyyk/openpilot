@@ -391,7 +391,8 @@ node {
         ])
       },
       'camerad OX03C10': {
-        deviceStage("OX03C10", "up-tizi", ["UNSAFE=1"], [
+        // the 3X's road cameras on the UP rigs see no light
+        deviceStage("OX03C10", "up-tizi", ["UNSAFE=1", "DARK_CAMERAS=narrowRoadCameraState,wideRoadCameraState"], [
           step("build", "cd openpilot/system/manager && ./build.py"),
           step("test pandad", "./openpilot/selfdrive/pandad/tests/test_pandad.py"),
           step("test camerad", "./openpilot/system/camerad/test/test_camerad.py", [timeout: 90]),

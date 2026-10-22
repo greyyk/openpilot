@@ -18,6 +18,8 @@ EXPOSURE_STABLE_FRAMES = 20
 # auto exposure should settle within this fraction of camerad's (scene dependent) target grey
 EXPOSURE_TOLERANCE = 0.2
 MAX_TEST_TIME = 25
+# cameras that see no light on the test rig, so their exposure and image can't be checked, e.g. the comma 3X's road cameras on a UP
+DARK_CAMERAS = set(os.getenv("DARK_CAMERAS", "").split(","))
 
 
 def _numpy_rgb2gray(im):
@@ -52,7 +54,7 @@ def _camera_session():
       if time.monotonic() - start >= TEST_TIMESPAN:
         with lock:
           ts = msgs_to_time_series(raw_logs)
-        if all(_converged(ts, cam)[-EXPOSURE_STABLE_FRAMES:].all() for cam in CAMERAS):
+        if all(_converged(ts, cam)[-EXPOSURE_STABLE_FRAMES:].all() for cam in CAMERAS if cam not in DARK_CAMERAS):
           break
 
   with lock:
@@ -79,12 +81,16 @@ class TestCamerad(OpenpilotTestCase):
 
   @parameterized.expand(CAMERAS, names=("cam",))
   def test_camera_exposure(self, cam):
+    if cam in DARK_CAMERAS:
+      self.skipTest(f"{cam} is in the dark")
     # auto exposure converges to its target
     converged = _converged(self.logs, cam)
     assert converged[-EXPOSURE_STABLE_FRAMES:].all(), f"{cam}: exposure didn't converge, {converged.sum()}/{len(converged)} frames converged"
 
   @parameterized.expand(CAMERAS, names=("cam",))
   def test_camera_image(self, cam):
+    if cam in DARK_CAMERAS:
+      self.skipTest(f"{cam} is in the dark")
     # the image isn't black, saturated, or flat
     mean, std = self.images[cam][-1]
     assert 0.02 < mean < 0.9, f"{cam}: bad image brightness {mean=:.3f}"
