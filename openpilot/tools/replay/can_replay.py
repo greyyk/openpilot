@@ -18,25 +18,31 @@ ENABLE_IGN = IGN_ON > 0 and IGN_OFF > 0
 ENABLE_PWR = PWR_ON > 0 and PWR_OFF > 0
 
 
-def send_thread(j, flock):
+def send_thread(j, flock, up=False):
   if "FLASH" in os.environ:
     with flock:
       j.flash()
 
-  j.reset()
+  if up:
+    j.set_harness_orientation(j.HARNESS_ORIENTATION_1)
+    def set_power(on):
+      j.set_power(obd_c=on)
+  else:
+    j.reset()
+    j.set_can_loopback(False)
+    set_power = j.set_panda_power
   for i in [0, 1, 2, 3, 0xFFFF]:
     j.can_clear(i)
     j.set_can_speed_kbps(i, 500)
   j.set_ignition(True)
-  j.set_panda_power(True)
-  j.set_can_loopback(False)
+  set_power(True)
 
   rk = Ratekeeper(1 / DT_CTRL, print_delay_threshold=None)
   while True:
     # handle cycling
     if ENABLE_PWR:
       i = (rk.frame*DT_CTRL) % (PWR_ON + PWR_OFF) < PWR_ON
-      j.set_panda_power(i)
+      set_power(i)
     if ENABLE_IGN:
       i = (rk.frame*DT_CTRL) % (IGN_ON + IGN_OFF) < IGN_ON
       j.set_ignition(i)
@@ -106,8 +112,8 @@ if __name__ == "__main__":
     print(f"Cycling ignition: on for {IGN_ON}s, off for {IGN_OFF}s")
 
   if args.up:
-    from ultimate_provisioning import Jungle
+    from ultimate_provisioning import UP
     config_realtime_process(3, 55)
-    send_thread(Jungle(), None)
+    send_thread(UP(), None, up=True)
   else:
     connect()
