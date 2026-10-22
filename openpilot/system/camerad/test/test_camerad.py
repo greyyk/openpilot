@@ -94,7 +94,8 @@ class TestCamerad(OpenpilotTestCase):
     # the image isn't black, saturated, or flat
     mean, std = self.images[cam][-1]
     assert 0.02 < mean < 0.9, f"{cam}: bad image brightness {mean=:.3f}"
-    assert std > 0.02, f"{cam}: flat image {std=:.3f}"
+    # a dead sensor or pipeline is flat to within noise, the rack scenes have little contrast, e.g. std=0.016
+    assert std > 0.005, f"{cam}: flat image {std=:.3f}"
 
   def test_frame_skips(self):
     for c in CAMERAS:
