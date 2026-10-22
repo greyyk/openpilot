@@ -341,7 +341,8 @@ node {
     if (!env.BRANCH_NAME.matches(excludeRegex)) {
     parallel (
       'onroad tests': {
-        deviceStage("onroad", "up", ["UNSAFE=1"], [
+        // on a UP whose kernel has the TCAN driver fixes, the stock driver can't keep up with the replay
+        deviceStage("onroad", "up-can", ["UNSAFE=1"], [
           step("build openpilot", "cd openpilot/system/manager && ./build.py"),
           step("check dirty", "tools/release/check-dirty.sh"),
           step("onroad tests", "./openpilot/selfdrive/test/test_onroad.py TestOnroad", [timeout: 60, can: true]),
