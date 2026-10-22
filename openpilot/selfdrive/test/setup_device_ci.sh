@@ -35,8 +35,11 @@ tee "$CONTINUE_PATH" << EOF
 sudo abctl --set_success
 
 # the UP reaches the DUT over the aux USB gadget, which needs adb on
+# (rewriting AdbEnabled restarts the USB gadget, which can leave it unbound, so only write it if needed)
 mkdir -p /data/params/d
-echo -n 1 > /data/params/d/AdbEnabled
+if [ "\$(cat /data/params/d/AdbEnabled 2>/dev/null)" != "1" ]; then
+  echo -n 1 > /data/params/d/AdbEnabled
+fi
 
 # patch sshd config
 sudo mount -o rw,remount /
